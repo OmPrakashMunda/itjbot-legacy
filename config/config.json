@@ -1,0 +1,9 @@
+{
+    "name": "Sticker",
+    "author": "ITJ-BOT ❤",
+    "timezone": "Asia/Kolkata",
+    "groups": false,
+    "clearChat": true,
+    "quizMode": true,
+    "allUsers": false 
+}
