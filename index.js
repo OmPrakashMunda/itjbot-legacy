@@ -1,6 +1,7 @@
 const {
     Client,
     LocalAuth,
+    Chat,
     MessageMedia,
 } = require('whatsapp-web.js');
 const axios = require('axios');
@@ -262,7 +263,6 @@ try {
                                     chat.sendStateRecording();
                                     const fileName = message.id.id;
                                     const filePath = `./temp/${fileName}.ogg`;
-                                    chat.sendStateTyping();
                                     const audio = await message.downloadMedia();
                                     const binaryData = Buffer.from(audio.data, 'base64');
                                     fs.writeFile(filePath, binaryData, function (err) { });
@@ -333,8 +333,6 @@ try {
                                     } else if (command === 'mp3') {
                                         if (cmdContent.match(ytUrlPattern)) {
                                             await sendText(userId, "Let me fetch that YouTube audio for you...");
-                                            userMsg = btoa(userMessage);
-                                            botMsg = btoa("YouTube Audio Download Link");
                                             const url = cmdContent;
                                             async function ytAudio() {
                                                 const downloadUrl = await getDownloadUrl(url, 'audio');
@@ -343,12 +341,10 @@ try {
                                             ytAudio();
                                         } else if (cmdContent.match(instaUrlPattern)) {
                                             await sendText(userId, "Just a moment while I fetch the post for you...");
-                                            userMsg = btoa(userMessage);
-                                            botMsg = btoa("Instagram Download Link");
                                             const url = cmdContent;
                                             async function igAudio() {
                                                 const downloadUrl = await getDownloadUrl(url, 'audio');
-                                                await sendText(userId, `Here's your instagram download link (Audio): ${await short(downloadUrl)}`);
+                                                await sendText(userId, `Here's your instagram download link (Audio): ${await shortenUrl(downloadUrl)}`);
                                             }
                                             igAudio();
                                         }
