@@ -1,7 +1,6 @@
 const {
     Client,
     LocalAuth,
-    Chat,
     MessageMedia,
 } = require('whatsapp-web.js');
 const axios = require('axios');
