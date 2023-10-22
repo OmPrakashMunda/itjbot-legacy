@@ -1,7 +1,3 @@
-# README for ITJ-BOT
-
-This README provides an overview of the ITJ-BOT code, its functionality, and how to use it. ITJ-BOT is a WhatsApp bot capable of handling various tasks, such as responding to messages, sending media, and more.
-
 ## Overview
 
 ITJ-BOT is built using the [WhatsApp Web API](https://github.com/pedroslopez/whatsapp-web.js) and integrates several other libraries and APIs to enhance its functionality. Below are some of the key components used in ITJ-BOT:
@@ -26,7 +22,7 @@ ITJ-BOT provides a variety of features, including but not limited to:
 - Downloading media from YouTube, Instagram, and Spotify.
 - Handling voice notes and transcribing audio messages.
 - Responding to user messages with AI-generated responses.
-- Handling and processing various types of messages, including commands.
+- Handling and processing various types of messages, including [commands](https://github.com/OmPrakashMunda/itjbot-legacy#commands).
 
 ## Installation
 
@@ -54,6 +50,27 @@ ITJ-BOT requires configuration parameters, such as your WhatsApp authentication 
 
 5. **Error Reporting:** ITJ-BOT is configured to use Sentry for error monitoring and reporting. Any errors encountered will be logged and reported.
 
+## Commands
+**Note:** Every command should commence with a hyphen (` - `), and it is essential that spelling is accurate.
+
+**Imagine:** This command is used to genetare AI imgaes using stable diffusion
+
+**Usage**
+`-imagine <prompt>`
+
+**Example**
+`-imagine astronaut riding a horse`
+
+Current this feature is only for beta testers.
+**mp3:** This command is used to download the content in mp3 format (Youtube and Instagram)
+
+**Usage**
+`-mp3 <url>`
+
+**Example**
+`-mp3 https://www.youtube.com/watch?v=dQw4w9WgXcQ`
+
+
 ## Important Notes
 
 - **Upgrading Plans:** ITJ-BOT includes features that may require different user plans. Users are informed about their plan level and the features they can access based on their plan.
@@ -73,7 +90,3 @@ If you encounter any issues while using ITJ-BOT or have suggestions for improvem
 ## License
 
 ITJ-BOT is provided under the license terms defined in the project's repository. Please review the licensing terms before using the code.
-
----
-
-This README provides a high-level overview of ITJ-BOT. For more detailed information and usage guidelines, please refer to the official documentation or the project's repository.
