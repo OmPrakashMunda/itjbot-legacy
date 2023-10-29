@@ -70,6 +70,41 @@ Current this feature is only for beta testers.
 **Example**
 `-mp3 https://www.youtube.com/watch?v=dQw4w9WgXcQ`
 
+6. **ITJFLIX:**
+
+### Overview
+This script is designed to upload movies to Amazon S3 and a content management system after selecting a movie using the YTS API. It follows a sequence of steps to find a suitable torrent, download it using Seedr, and then upload the downloaded movie file to Amazon S3. Finally, it sends metadata to a CMS to catalog the movie.
+
+### Dependencies
+- `axios`: For making HTTP requests.
+- `url`, `path`: For URL and path manipulation.
+- `https`: To enable HTTP requests.
+- `querystring`: For working with query strings in the URL.
+- `Seedr`: A module for managing torrents on the Seedr platform.
+- `fs`: For file system operations.
+- `@aws-sdk/client-s3`: To interact with Amazon S3.
+- `dotenv`: For environment variable configuration.
+
+### Setup
+The script uses environment variables stored in a `.env` file to configure AWS S3 access. It requires `S3_KEY`, `S3_SECRET`, `S3_REGION`, and `S3_BUCKET` to be set.
+
+### Execution Flow
+- The function `tryToUpload` takes `title_id`, `imdb_id`, `name`, and `year` as parameters.
+- It starts by querying the YTS API to find a movie based on the `imdb_id`.
+- It selects the best available torrent (720p or 1080p) based on seed count from the retrieved movies.
+- With a chosen torrent, it constructs a magnet link and an S3 key for uploading.
+- The script uses Seedr to add the torrent magnet link and waits for the video to be available for download.
+- Upon successful download, the script uploads the file to the configured S3 bucket.
+- After uploading the file, it sends metadata about the movie to a CMS using an API call.
+
+### Error Handling
+The script includes error handling for various stages of the process, logging errors encountered during HTTP requests, file handling, Seedr operations, and S3 uploads. If any error occurs, it is logged or returned as a string.
+
+### Notes
+- The script seems to be designed to handle the upload of one movie at a time.
+- Some parts of the script are synchronous, which might lead to potential performance issues, especially when waiting for Seedr operations or S3 uploads.
+
+Ensure that the necessary environment variables are set up and the script is executed with proper error handling for robust functionality.
 
 ## Important Notes
 

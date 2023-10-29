@@ -20,6 +20,7 @@ const config = require('./config/config.json');
 const db = require('./App/db');
 const ai = require('./App/openai');
 const sd = require('./App/stablediffusion');
+const itjflix = require('./App/itjflix');
 
 const { getDownloadUrl } = require('./App/download');
 const { textToSpeech } = require('./App/texttospeech');
@@ -76,6 +77,37 @@ try {
             try {
                 await client.sendMessage(`${phoneNumber}@c.us`, message);
                 res.send('Message sent successfully');
+            } catch (err) {
+                console.error('Error sending message:', err);
+                res.status(500).send('Error sending message');
+            }
+        } else {
+            res.status(403).send('Unauthorized');
+        }
+    });
+
+    app.get('/itjflix', async (req, res) => {
+        const imdb_id = req.query.imdb_id;
+        const name = req.query.name;
+        const year = req.query.year;
+        const title_id = req.query.title_id;
+        const password = req.query.password;
+        if (password == passwordHash) {
+            try {
+                let messaage = '';
+                if (imdb_id != '') {
+                    messaage = `New Request: ${name}(${year})\n\nInitiating Protocol: "TRY TO UPLOAD"`;
+                } else {
+                    messaage = `New Request: ${name}(${year})\n\nKindly upload it as soon as possible.`;
+                }
+                await client.sendMessage("919341818031-1633259190@g.us", messaage);
+                res.send('Message sent successfully');
+                if (imdb_id != '') {
+                    itjflix.tryToUpload(title_id, imdb_id, name, year)
+                        .then(async (response) => {
+                            await client.sendMessage("919341818031-1633259190@g.us", response);
+                        });
+                }
             } catch (err) {
                 console.error('Error sending message:', err);
                 res.status(500).send('Error sending message');
