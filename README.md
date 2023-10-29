@@ -70,7 +70,7 @@ Current this feature is only for beta testers.
 **Example**
 `-mp3 https://www.youtube.com/watch?v=dQw4w9WgXcQ`
 
-6. **ITJFLIX:**
+## ITJFLIX Automatic Movie Upload
 
 ### Overview
 This script is designed to upload movies to Amazon S3 and a content management system after selecting a movie using the YTS API. It follows a sequence of steps to find a suitable torrent, download it using Seedr, and then upload the downloaded movie file to Amazon S3. Finally, it sends metadata to a CMS to catalog the movie.
