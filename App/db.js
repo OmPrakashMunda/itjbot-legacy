@@ -57,22 +57,75 @@ async function writeLogDocUpload(user, uid, filename, filesize) {
 
 async function listFiles(user) {
     return new Promise((resolve, reject) => {
-        const query = 'SELECT filename FROM docs WHERE user = ?';
+        const query = 'SELECT uid, filename, filesize FROM docs WHERE user = ?';
 
         connection.query(query, [user], (error, results) => {
             if (error) {
                 console.error('Error fetching filenames from the SQL table:', error);
-                return 'Error fetching filenames. Please try again later.';
+                reject('Error fetching filenames. Please try again later.');
             }
 
             if (results.length === 0) {
-                return 'No files found.';
+                resolve('No files found.');
             }
 
-            const fileNames = results.map((row, index) => `${index + 1}. ${row.filename}`);
-            const fileList = fileNames.join('\n');
+            const fileData = results.map((row) => {
+                return {
+                    rowId: row.uid,
+                    title: row.filename
+                };
+            });
 
-            resolve('Your files:\n' + fileList);
+            resolve(fileData);
+        });
+    });
+}
+
+
+async function getMimeAndFileName(uid) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM docs WHERE uid = ?';
+
+        connection.query(query, [uid], (error, results) => {
+            if (error) {
+                console.error('Error fetching filenames from the SQL table:', error);
+                reject('Error fetching filenames. Please try again later.');
+                return;
+            }
+
+            if (results.length === 0) {
+                reject('No data found for the provided UID.');
+                return;
+            }
+
+            const row = results[0];
+            const fileExtension = row.filename.split('.').pop().toLowerCase();
+            let mimeType;
+
+            switch (fileExtension) {
+                case 'jpg':
+                case 'jpeg':
+                    mimeType = 'image/jpeg';
+                    break;
+                case 'png':
+                    mimeType = 'image/png';
+                    break;
+                case 'gif':
+                    mimeType = 'image/gif';
+                    break;
+                case 'pdf':
+                    mimeType = 'application/pdf';
+                    break;
+                default:
+                    mimeType = 'application/octet-stream';
+            }
+
+            const fileData = {
+                fileName: row.filename,
+                mimeType: mimeType,
+            };
+
+            resolve(fileData);
         });
     });
 }
@@ -180,5 +233,6 @@ module.exports = {
     writeLogDocUpload: writeLogDocUpload,
     listFiles: listFiles,
     getUser: getUser,
-    isPromptLeft: isPromptLeft
+    isPromptLeft: isPromptLeft,
+    getMimeAndFileName: getMimeAndFileName
 };
