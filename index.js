@@ -12,9 +12,13 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
 const Sentry = require("@sentry/node");
 const btoa = require('btoa');
+const WebP = require('node-webpmux');
+const crypto = require('crypto');
+const {
+    exec
+} = require('child_process');
 
 const config = require('./config/config.json');
 const db = require('./App/db');
@@ -22,8 +26,12 @@ const ai = require('./App/openai');
 const sd = require('./App/stablediffusion');
 const itjflix = require('./App/itjflix');
 
-const { getDownloadUrl } = require('./App/download');
-const { textToSpeech } = require('./App/texttospeech');
+const {
+    getDownloadUrl
+} = require('./App/download');
+const {
+    textToSpeech
+} = require('./App/texttospeech');
 
 let userMsg;
 let botMsg;
@@ -152,7 +160,13 @@ try {
                 const name = contact.name || phoneNumber;
                 const isMyContact = contact.isMyContact;
 
-                res.send(JSON.stringify({ 'profilePic': profilePic || null, 'about': about, 'name': name, 'contact': isMyContact, 'data': contact }));
+                res.send(JSON.stringify({
+                    'profilePic': profilePic || null,
+                    'about': about,
+                    'name': name,
+                    'contact': isMyContact,
+                    'data': contact
+                }));
             } catch (err) {
                 console.log('Error:', err);
                 res.status(500).send('Internal Server Error');
@@ -167,7 +181,9 @@ try {
         if (password === passwordHash) {
             try {
                 await sendText("919065736393@c.us", "response --200 --active");
-                res.send(JSON.stringify({ 'status': 200 }));
+                res.send(JSON.stringify({
+                    'status': 200
+                }));
             } catch (err) {
                 console.log('Error:', err);
                 res.status(500).send('Internal Server Error');
@@ -195,9 +211,9 @@ try {
             throw error;
         }
     }
-    
+
     let isAuthenticated;
-    
+
     client.on("ready", async () => {
         console.clear();
         const consoleText = './config/console.txt';
@@ -215,7 +231,9 @@ try {
             }
         });
 
-        client.pupPage.addScriptTag({ path: require.resolve("@wppconnect/wa-js") });
+        client.pupPage.addScriptTag({
+            path: require.resolve("@wppconnect/wa-js")
+        });
         await client.pupPage.waitForFunction(() => window.WPP?.isReady);
 
         isAuthenticated = await client.pupPage.evaluate(() => WPP.conn.isAuthenticated());
@@ -241,304 +259,366 @@ try {
     }
 
     client.on('message', async (message) => {
-        client.sendPresenceAvailable();
-        const user = await client.getContactById(message.from);
-        const isGroup = message.from.endsWith('@g.us') ? true : false;
-        const chat = await client.getChatById(message.id.remote);
-        const userMessage = message.body;
-        const userId = user.id._serialized;
-        const userNumber = user.number;
-        const instaUrlMatch = userMessage.match(instaUrlPattern);
-        const ytUrlMatch = userMessage.match(ytUrlPattern);
-        const spotifyURLMatch = userMessage.match(spotifyUrlPattern);
-        let isUser;
-        try {
-            const userData = await db.getUser(userNumber);
-            isUser = true
-            var userPlan = userData.plan;
-            var userEmail = userData.email;
-            var userSuspended = userData.suspended;
-        } catch (error) {
-            console.log('Error:', error.message);
-            isUser = false;
-        }
-
-        if ((isGroup && config.groups) || !isGroup) {
-            if (isUser) {
-                if (userSuspended === 0) {
-                    try {
-                        await chat.sendSeen();
-                        switch (message.type) {
-                            case 'image':
-                            case 'video':
-                            case 'gif':
-                                await sendText(userId, "Hold on..");
-                                try {
-                                    const media = await message.downloadMedia();
-                                    client.sendMessage(message.from, media, {
-                                        sendMediaAsSticker: true,
-                                        stickerName: config.name,
-                                        stickerAuthor: config.author,
-                                        stickerCategories: ["apple", "banana", "orange", "grape", "watermelon"]
-                                    })
-                                } catch {
-                                    await sendText(userId, "I'm sorry, I encountered an issue while handling your media. Rest assured, we're looking into the problem.");
-                                }
-                                break;
-                            case 'sticker':
-                                await sendText(userId, "Hold on..");
-                                try {
-                                    const media = await message.downloadMedia();
-                                    client.sendMessage(message.from, media);
-                                } catch (error) {
-                                    console.log('Error downloading media:', error);
-                                    await sendText(userId, "I'm sorry, I encountered an issue while handling your media. Rest assured, we're looking into the problem.");
-                                }
-                                break;
-                            case 'document':
-                                if (userPlan >= 2) {
-                                    const document = await message.downloadMedia();
-                                    if (document.mimetype === 'application/pdf' || document.mimetype.startsWith('image/')) {
-                                        const fileNameWithoutExt = message.id.id;
-                                        const filePath = `./userFiles/${fileNameWithoutExt}`;
-                                        const originalFilename = document.filename;
-                                        const fileSize = document.filesize;
-                                        fs.writeFile(filePath, document.data, "base64", function (err) { if (err) { console.log(err); } });
-
-                                        if (db.writeLogDocUpload(userNumber, fileNameWithoutExt, originalFilename, fileSize)) {
-                                            await sendText(userId, "File upload successfull.\n\nSend ``` My files ``` to list your files.");
-                                        }
-                                    }
-                                } else {
-                                    await sendText(userId, "We apologize, but uploading documents is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/");
-                                }
-                                break;
-                            case 'ptt':
-                                if (userPlan >= 3) {
-                                    chat.sendStateRecording();
-                                    const fileName = message.id.id;
-                                    const filePath = `./temp/${fileName}.ogg`;
-                                    const audio = await message.downloadMedia();
-                                    const binaryData = Buffer.from(audio.data, 'base64');
-                                    fs.writeFile(filePath, binaryData, function (err) { });
-                                    const text = await ai.transcribeAudio(filePath);
-                                    console.log(text);
-                                    try {
-                                        const AIresponse = await ai.gpt3(userId, text);
-                                        const userMsg = btoa("Voice: " + text);
-                                        const botMsg = btoa(AIresponse);
-                                        if (userPlan === 5) {
-                                            async function sendAudio() {
-                                                try {
-                                                    const url = await textToSpeech(AIresponse);
-                                                    if (url) {
-                                                        const media = await MessageMedia.fromUrl(url);
-                                                        client.sendMessage(message.from, media, { sendAudioAsVoice: true });
-                                                    } else {
-                                                        await sendText(userId, "ERROR 4xx");
-                                                    }
-                                                } catch (err) {
-                                                    console.log('An error occurred in TEXT TO SPEECH API:', err.message);
-                                                    await sendText(userId, "ERROR 5xx");
-                                                }
-                                            }
-                                            sendAudio();
-                                        } else {
-                                            await sendText(userId, AIresponse);
-                                        }
-
-                                        db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
-                                    } catch (error) {
-                                        console.log('An error occurred:', error);
-                                    }
-                                } else {
-                                    await sendText(userId, "We apologize, but responding to voice notes is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/");
-                                }
-                                break;
-                            case 'list_response':
-                                    const docPath = `userFiles/${message.selectedRowId}`;
-                                    const base64Data = await fs.promises.readFile(docPath, { encoding: 'base64' });
-                                    const fileInfo = await db.getMimeAndFileName(message.selectedRowId);
-                                    const document = new MessageMedia(fileInfo.mimeType, base64Data, fileInfo.fileName);
-                                    client.sendMessage(message.from, document, { sendMediaAsDocument: true });
-                                break;
-                            default:
-                                //commands
-                                if (userMessage.startsWith('-')) {
-                                    let command = userMessage.substring(1).toLowerCase().split(" ")[0];
-                                    const words = userMessage.split(" ");
-                                    const cmdContent = words.slice(1).join(" ");
-                                    const userMsg = btoa(userMessage);
-                                    const botMsg = btoa("CMD RES");
-                                    if (command === 'imagine') {
-                                        if (userPlan === 5) {
-                                            async function handleImagine() {
-                                                try {
-                                                    const url = await sd.imagine(cmdContent);
-                                                    if (url) {
-                                                        const media = await MessageMedia.fromUrl(url);
-                                                        
-                                                        client.sendMessage(message.from, media);
-                                                        db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
-                                                    } else {
-                                                        await sendText(userId, "ERROR 4xx");
-                                                    }
-                                                } catch (err) {
-                                                    console.log('An error occurred in stablediffusion API:', err.message);
-                                                    await sendText(userId, "ERROR 5xx");
-                                                }
-                                            }
-
-                                            handleImagine();
-                                        } else {
-                                            await sendText(userId, "This feature is currently in beta testing and is available exclusively to our beta testers. If you're interested in becoming a beta tester, please send an email to support@itjupiter.tech");
-                                        }
-                                    } else if (command === 'mp3') {
-                                        if (cmdContent.match(ytUrlPattern)) {
-                                            await sendText(userId, "Let me fetch that YouTube audio for you...");
-                                            const url = cmdContent;
-                                            async function ytAudio() {
-                                                const downloadUrl = await getDownloadUrl(url, 'audio');
-                                                await sendText(userId, `Here's your YouTube audio download link: ${await shortenUrl(downloadUrl)}`);
-                                            }
-                                            ytAudio();
-                                        } else if (cmdContent.match(instaUrlPattern)) {
-                                            await sendText(userId, "Just a moment while I fetch the post for you...");
-                                            const url = cmdContent;
-                                            async function igAudio() {
-                                                const downloadUrl = await getDownloadUrl(url, 'audio');
-                                                await sendText(userId, `Here's your instagram download link (Audio): ${await shortenUrl(downloadUrl)}`);
-                                            }
-                                            igAudio();
-                                        }
-                                    } else {
-                                        await sendText(userId, "Command Not Found !\n\nFind more about commands: https://itjbot.itjupiter.tech/docs/#commands");
-                                    }
-                                    //end commands
-                                } else if (myFiles.includes(userMessage.toLowerCase())) {
-                                    async function listFiles() {
-                                        const files = await db.listFiles(userNumber);
-                                        if (isAuthenticated) {
-                                            let optionsListMessage = {
-                                                buttonText: "Files",
-                                                title: "Below, you'll find the files you've uploaded.",
-                                                footer: "Click and choose one",
-                                                sections: [
-                                                    {
-                                                        title: "Documents",
-                                                        rows: files
-                                                    }
-                                                ]
-                                            };
-                                            const sendList = await client.pupPage.evaluate(
-                                                (to, options) => WPP.chat.sendListMessage(to, options),
-                                                userId,
-                                                optionsListMessage
-                                            );
-
-                                        }
-                                    }
-                                    listFiles();
-
-                                } else if (spotifyURLMatch) {
-                                    if (userPlan >= 2) {
-                                        const postData = {
-                                            url: userMessage,
-                                            email: btoa(userEmail),
-                                        };
-                                        const apiUrl = 'https://sdl.itjupiter.tech/download';
-
-                                        async function makePostRequest() {
-                                            try {
-                                                const response = await axios.post(apiUrl, postData, {
-                                                    headers: {
-                                                        'Content-Type': 'application/json',
-                                                    },
-                                                });
-
-                                                if (response.data.response.status == 200) {
-                                                    await sendText(userId, "Your request has been successfully submitted. You will receive the download link in your email shortly.\n\n You can also use our web UI to download songs at https://sdl.itjupiter.tech/.");
-                                                    db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMessage, "--__--", userNumber);
-                                                }
-
-                                                console.log('Response:', response.data);
-                                            } catch (error) {
-                                                console.log('Error:', error);
-                                            }
-                                        }
-                                        makePostRequest();
-
-                                    } else {
-                                        await sendText(userId, "We apologize, but downloading spotify content is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/")
-                                    }
-                                } else if (ytUrlMatch) {
-                                    await sendText(userId, "Let me fetch that YouTube video for you...");
-                                    userMsg = btoa(userMessage);
-                                    botMsg = btoa("YouTube Video Download Link");
-                                    const url = ytUrlMatch[0];
-                                    async function ytVideo() {
-                                        const downloadUrl = await getDownloadUrl(url, 'video');
-                                        await sendText(userId, `Here's your YouTube video download link: ${await shortenUrl(downloadUrl)}`);
-                                    }
-                                    ytVideo();
-
-                                } else if (instaUrlMatch) {
-                                    await sendText(userId, "Just a moment while I fetch the post for you...");
-                                    userMsg = btoa(userMessage);
-                                    botMsg = btoa("Instagram Download Link");
-                                    const url = instaUrlMatch[0] + '/';
-                                    async function igVideo() {
-                                        const downloadUrl = await getDownloadUrl(url, 'video');
-                                        await sendText(userId, `Here's your instagram download link: ${await shortenUrl(downloadUrl)}`);
-                                    }
-                                    igVideo();
-                                } else if (greetings.includes(userMessage.toLowerCase())) {
-                                    userMsg = btoa(userMessage);
-                                    botMsg = btoa("Default greeting message");
-                                    await sendText(userId, welcomeMessage);
-                                } else if (userHelp.includes(userMessage.toLowerCase())) {
-                                    userMsg = btoa(userMessage);
-                                    botMsg = btoa("Default help message");
-                                    await sendText(userId, helpMessage);
-                                } else {
-                                    if (userMessage !== '') {
-                                        const promtLeft = await db.isPromptLeft(userNumber);
-                                        if (promtLeft === 1) {
-                                            try {
-                                                chat.sendStateTyping();
-                                                const AIresponse = await ai.gpt3(userId, userMessage);
-                                                const userMsg = btoa(userMessage);
-                                                const botMsg = btoa(AIresponse);
-                                                await sendText(userId, AIresponse);
-                                                db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
-                                            } catch (error) {
-                                                console.log('An error occurred:', error);
-                                            }
-                                        } else {
-                                            await sendText(userId, "Your allotted quota for prompts has been exhausted. To continue using our services, please consider upgrading your plan by visiting: https://itjbot.itjupiter.tech/");
-                                        }
-                                    }
-                                }
-                        }
-                    } catch (error) {
-                        console.log(error);
-                    }
-
-                    if (config.clearChat) {
-                        const timeout = setTimeout(async () => {
-                            await chat.clearMessages();
-                            clearTimeout(timeout);
-                        }, 10000);
-                    }
-                } else {
-                    await sendText(userId, "Your account has been temporarily suspended for a policy violation. If you believe this suspension was in error, please don't hesitate to contact us at support@itjupiter.tech for further assistance. To learn more about this issue, click the link below.\n\nhttps://itjbot.itjupiter.tech/terms/account-suspension/");
-                }
-
-            } else {
-                await sendText(userId, "To access ITJ-BOT, please complete your registration process by visiting the following URL:\n\nhttps://itjbot.itjupiter.tech/")
+        if (message.from != 'status@broadcast') {
+            client.sendPresenceAvailable();
+            const user = await client.getContactById(message.from);
+            const isGroup = message.from.endsWith('@g.us') ? true : false;
+            const chat = await client.getChatById(message.id.remote);
+            const userMessage = message.body;
+            const userId = user.id._serialized;
+            const userNumber = user.number;
+            const instaUrlMatch = userMessage.match(instaUrlPattern);
+            const ytUrlMatch = userMessage.match(ytUrlPattern);
+            const spotifyURLMatch = userMessage.match(spotifyUrlPattern);
+            let isUser;
+            try {
+                const userData = await db.getUser(userNumber);
+                isUser = true
+                var userPlan = userData.plan;
+                var userEmail = userData.email;
+                var userSuspended = userData.suspended;
+            } catch (error) {
+                console.log('Error:', error.message);
+                isUser = false;
             }
 
+            if ((isGroup && config.groups) || !isGroup) {
+                if (isUser) {
+                    if (userSuspended === 0) {
+                        try {
+                            await chat.sendSeen();
+                            switch (message.type) {
+                                case 'image':
+                                case 'video':
+                                case 'gif':
+                                    await sendText(userId, "Hold on..");
+                                    try {
+                                        const media = await message.downloadMedia();
+                                        client.sendMessage(message.from, media, {
+                                            sendMediaAsSticker: true,
+                                            stickerName: config.name,
+                                            stickerAuthor: config.author,
+                                            stickerCategories: ["apple", "banana", "orange", "grape", "watermelon"]
+                                        })
+                                    } catch {
+                                        await sendText(userId, "I'm sorry, I encountered an issue while handling your media. Rest assured, we're looking into the problem.");
+                                    }
+                                    break;
+                                case 'sticker':
+                                    await sendText(userId, "Hold on..");
+                                    try {
+                                        const media = await message.downloadMedia();
+
+                                        async function writeWebPFileWithFrameCount(base64Data) {
+                                            const randomName = crypto.randomBytes(8).toString('hex');
+                                            const webpFilePath = `temp/${randomName}.webp`;
+                                            const outputDir = `temp/${randomName}/`;
+                                            const outputVideo = `temp/${randomName}.mp4`;
+                                            const bufferData = Buffer.from(base64Data, 'base64');
+
+                                            fs.writeFileSync(webpFilePath, bufferData);
+                                            let img = new WebP.Image();
+                                            await img.load(webpFilePath);
+                                            isAnimated = img.data.extended.hasAnim;
+
+                                            if (isAnimated === true) {
+                                                await fs.promises.mkdir(outputDir);
+
+                                                try {
+                                                    const command = `./magick ${webpFilePath} ${path.join(outputDir, 'frame_%d.png')}`;
+                                                    await execPromise(command);
+
+                                                    const imageToVideoCmd = `ffmpeg -framerate ${img.data.anim.frames.length} -i ./temp/${randomName}/frame_%d.png -c:v libx264 -r 30 -pix_fmt yuv420p ${outputVideo}`;
+                                                    await execPromise(imageToVideoCmd);
+
+                                                    const mediaXX = await MessageMedia.fromFilePath(`./${outputVideo}`);
+                                                    client.sendMessage(userId, mediaXX, {
+                                                        sendVideoAsGif: true
+                                                    });
+
+                                                } catch (error) {
+                                                    console.error('An error occurred:', error);
+                                                }
+                                            } else {
+                                                client.sendMessage(message.from, media);
+                                            }
+
+
+                                        }
+
+                                        function execPromise(command) {
+                                            return new Promise((resolve, reject) => {
+                                                exec(command, (error, stdout, stderr) => {
+                                                    if (error) {
+                                                        reject(error);
+                                                        return;
+                                                    }
+                                                    resolve(stdout.trim());
+                                                });
+                                            });
+                                        }
+
+                                        writeWebPFileWithFrameCount(media.data);
+
+                                    } catch (error) {
+                                        console.log('Error downloading media:', error);
+                                        await sendText(userId, "I'm sorry, I encountered an issue while handling your media. Rest assured, we're looking into the problem.");
+                                    }
+                                    break;
+                                case 'document':
+                                    if (userPlan >= 2) {
+                                        const document = await message.downloadMedia();
+                                        if (document.mimetype === 'application/pdf' || document.mimetype.startsWith('image/')) {
+                                            const fileNameWithoutExt = message.id.id;
+                                            const filePath = `./userFiles/${fileNameWithoutExt}`;
+                                            const originalFilename = document.filename;
+                                            const fileSize = document.filesize;
+                                            fs.writeFile(filePath, document.data, "base64", function (err) {
+                                                if (err) {
+                                                    console.log(err);
+                                                }
+                                            });
+
+                                            if (db.writeLogDocUpload(userNumber, fileNameWithoutExt, originalFilename, fileSize)) {
+                                                await sendText(userId, "File upload successfull.\n\nSend ``` My files ``` to list your files.");
+                                            }
+                                        }
+                                    } else {
+                                        await sendText(userId, "We apologize, but uploading documents is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/");
+                                    }
+                                    break;
+                                case 'ptt':
+                                    if (userPlan >= 3) {
+                                        chat.sendStateRecording();
+                                        const fileName = message.id.id;
+                                        const filePath = `./temp/${fileName}.ogg`;
+                                        const audio = await message.downloadMedia();
+                                        const binaryData = Buffer.from(audio.data, 'base64');
+                                        fs.writeFile(filePath, binaryData, function (err) { });
+                                        const text = await ai.transcribeAudio(filePath);
+                                        console.log(text);
+                                        try {
+                                            const AIresponse = await ai.gpt3(userId, text);
+                                            const userMsg = btoa("Voice: " + text);
+                                            const botMsg = btoa(AIresponse);
+                                            if (userPlan === 5) {
+                                                async function sendAudio() {
+                                                    try {
+                                                        const url = await textToSpeech(AIresponse);
+                                                        if (url) {
+                                                            const media = await MessageMedia.fromUrl(url);
+                                                            client.sendMessage(message.from, media, {
+                                                                sendAudioAsVoice: true
+                                                            });
+                                                        } else {
+                                                            await sendText(userId, "ERROR 4xx");
+                                                        }
+                                                    } catch (err) {
+                                                        console.log('An error occurred in TEXT TO SPEECH API:', err.message);
+                                                        await sendText(userId, "ERROR 5xx");
+                                                    }
+                                                }
+                                                sendAudio();
+                                            } else {
+                                                await sendText(userId, AIresponse);
+                                            }
+
+                                            db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
+                                        } catch (error) {
+                                            console.log('An error occurred:', error);
+                                        }
+                                    } else {
+                                        await sendText(userId, "We apologize, but responding to voice notes is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/");
+                                    }
+                                    break;
+                                case 'list_response':
+                                    const docPath = `userFiles/${message.selectedRowId}`;
+                                    const base64Data = await fs.promises.readFile(docPath, {
+                                        encoding: 'base64'
+                                    });
+                                    const fileInfo = await db.getMimeAndFileName(message.selectedRowId);
+                                    const document = new MessageMedia(fileInfo.mimeType, base64Data, fileInfo.fileName);
+                                    client.sendMessage(message.from, document, {
+                                        sendMediaAsDocument: true
+                                    });
+                                    break;
+                                default:
+                                    //commands
+                                    if (userMessage.startsWith('-')) {
+                                        let command = userMessage.substring(1).toLowerCase().split(" ")[0];
+                                        const words = userMessage.split(" ");
+                                        const cmdContent = words.slice(1).join(" ");
+                                        const userMsg = btoa(userMessage);
+                                        const botMsg = btoa("CMD RES");
+                                        if (command === 'imagine') {
+                                            if (userPlan === 5) {
+                                                async function handleImagine() {
+                                                    try {
+                                                        const url = await sd.imagine(cmdContent);
+                                                        if (url) {
+                                                            const media = await MessageMedia.fromUrl(url);
+
+                                                            client.sendMessage(message.from, media);
+                                                            db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
+                                                        } else {
+                                                            await sendText(userId, "ERROR 4xx");
+                                                        }
+                                                    } catch (err) {
+                                                        console.log('An error occurred in stablediffusion API:', err.message);
+                                                        await sendText(userId, "ERROR 5xx");
+                                                    }
+                                                }
+
+                                                handleImagine();
+                                            } else {
+                                                await sendText(userId, "This feature is currently in beta testing and is available exclusively to our beta testers. If you're interested in becoming a beta tester, please send an email to support@itjupiter.tech");
+                                            }
+                                        } else if (command === 'mp3') {
+                                            if (cmdContent.match(ytUrlPattern)) {
+                                                await sendText(userId, "Let me fetch that YouTube audio for you...");
+                                                const url = cmdContent;
+                                                async function ytAudio() {
+                                                    const downloadUrl = await getDownloadUrl(url, 'audio');
+                                                    await sendText(userId, `Here's your YouTube audio download link: ${await shortenUrl(downloadUrl)}`);
+                                                }
+                                                ytAudio();
+                                            } else if (cmdContent.match(instaUrlPattern)) {
+                                                await sendText(userId, "Just a moment while I fetch the post for you...");
+                                                const url = cmdContent;
+                                                async function igAudio() {
+                                                    const downloadUrl = await getDownloadUrl(url, 'audio');
+                                                    await sendText(userId, `Here's your instagram download link (Audio): ${await shortenUrl(downloadUrl)}`);
+                                                }
+                                                igAudio();
+                                            }
+                                        } else {
+                                            await sendText(userId, "Command Not Found !\n\nFind more about commands: https://itjbot.itjupiter.tech/docs/#commands");
+                                        }
+                                        //end commands
+                                    } else if (myFiles.includes(userMessage.toLowerCase())) {
+                                        async function listFiles() {
+                                            const files = await db.listFiles(userNumber);
+                                            if (isAuthenticated) {
+                                                let optionsListMessage = {
+                                                    buttonText: "Files",
+                                                    title: "Below, you'll find the files you've uploaded.",
+                                                    footer: "Click and choose one",
+                                                    sections: [{
+                                                        title: "Documents",
+                                                        rows: files
+                                                    }]
+                                                };
+                                                const sendList = await client.pupPage.evaluate(
+                                                    (to, options) => WPP.chat.sendListMessage(to, options),
+                                                    userId,
+                                                    optionsListMessage
+                                                );
+
+                                            }
+                                        }
+                                        listFiles();
+
+                                    } else if (spotifyURLMatch) {
+                                        if (userPlan >= 2) {
+                                            const postData = {
+                                                url: userMessage,
+                                                email: btoa(userEmail),
+                                            };
+                                            const apiUrl = 'https://sdl.itjupiter.tech/download';
+
+                                            async function makePostRequest() {
+                                                try {
+                                                    const response = await axios.post(apiUrl, postData, {
+                                                        headers: {
+                                                            'Content-Type': 'application/json',
+                                                        },
+                                                    });
+
+                                                    if (response.data.response.status == 200) {
+                                                        await sendText(userId, "Your request has been successfully submitted. You will receive the download link in your email shortly.\n\n You can also use our web UI to download songs at https://sdl.itjupiter.tech/.");
+                                                        db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMessage, "--__--", userNumber);
+                                                    }
+
+                                                    console.log('Response:', response.data);
+                                                } catch (error) {
+                                                    console.log('Error:', error);
+                                                }
+                                            }
+                                            makePostRequest();
+
+                                        } else {
+                                            await sendText(userId, "We apologize, but downloading spotify content is currently unavailable for you.\nKindly upgrade your plan:\n\nhttp://itjbot.itjupiter.tech/")
+                                        }
+                                    } else if (ytUrlMatch) {
+                                        await sendText(userId, "Let me fetch that YouTube video for you...");
+                                        userMsg = btoa(userMessage);
+                                        botMsg = btoa("YouTube Video Download Link");
+                                        const url = ytUrlMatch[0];
+                                        async function ytVideo() {
+                                            const downloadUrl = await getDownloadUrl(url, 'video');
+                                            await sendText(userId, `Here's your YouTube video download link: ${await shortenUrl(downloadUrl)}`);
+                                        }
+                                        ytVideo();
+
+                                    } else if (instaUrlMatch) {
+                                        await sendText(userId, "Just a moment while I fetch the post for you...");
+                                        userMsg = btoa(userMessage);
+                                        botMsg = btoa("Instagram Download Link");
+                                        const url = instaUrlMatch[0] + '/';
+                                        async function igVideo() {
+                                            const downloadUrl = await getDownloadUrl(url, 'video');
+                                            await sendText(userId, `Here's your instagram download link: ${await shortenUrl(downloadUrl)}`);
+                                        }
+                                        igVideo();
+                                    } else if (greetings.includes(userMessage.toLowerCase())) {
+                                        userMsg = btoa(userMessage);
+                                        botMsg = btoa("Default greeting message");
+                                        await sendText(userId, welcomeMessage);
+                                    } else if (userHelp.includes(userMessage.toLowerCase())) {
+                                        userMsg = btoa(userMessage);
+                                        botMsg = btoa("Default help message");
+                                        await sendText(userId, helpMessage);
+                                    } else {
+                                        if (userMessage !== '') {
+                                            const promtLeft = await db.isPromptLeft(userNumber);
+                                            if (promtLeft === 1) {
+                                                try {
+                                                    chat.sendStateTyping();
+                                                    const AIresponse = await ai.gpt3(userId, userMessage);
+                                                    const userMsg = btoa(userMessage);
+                                                    const botMsg = btoa(AIresponse);
+                                                    await sendText(userId, AIresponse);
+                                                    db.writeLog(moment().tz(config.timezone).format('MMM Do YYYY - HH:mm:ss'), userMsg, botMsg, userNumber);
+                                                } catch (error) {
+                                                    console.log('An error occurred:', error);
+                                                }
+                                            } else {
+                                                await sendText(userId, "Your allotted quota for prompts has been exhausted. To continue using our services, please consider upgrading your plan by visiting: https://itjbot.itjupiter.tech/");
+                                            }
+                                        }
+                                    }
+                            }
+                        } catch (error) {
+                            console.log(error);
+                        }
+
+                        if (config.clearChat) {
+                            const timeout = setTimeout(async () => {
+                                await chat.clearMessages();
+                                clearTimeout(timeout);
+                            }, 10000);
+                        }
+                    } else {
+                        await sendText(userId, "Your account has been temporarily suspended for a policy violation. If you believe this suspension was in error, please don't hesitate to contact us at support@itjupiter.tech for further assistance. To learn more about this issue, click the link below.\n\nhttps://itjbot.itjupiter.tech/terms/account-suspension/");
+                    }
+
+                } else {
+                    await sendText(userId, "To access ITJ-BOT, please complete your registration process by visiting the following URL:\n\nhttps://itjbot.itjupiter.tech/")
+                }
+
+            }
         }
+
     });
 
     client.initialize();
